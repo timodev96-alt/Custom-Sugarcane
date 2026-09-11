@@ -41,3 +41,6 @@ jar {
 		rename { "${it}_${project.name}"}
 	}
 }
+fabricApi {
+	configureDataGeneration()
+}

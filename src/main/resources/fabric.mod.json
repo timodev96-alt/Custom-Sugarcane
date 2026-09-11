@@ -12,6 +12,9 @@
   "entrypoints": {
     "main": [
       "net.timo.custom_sugarcane.Main"
+    ],
+    "fabric-datagen": [
+      "net.timo.custom_sugarcane.CustomSugarcaneDataGenerator"
     ]
   },
   "mixins": [
