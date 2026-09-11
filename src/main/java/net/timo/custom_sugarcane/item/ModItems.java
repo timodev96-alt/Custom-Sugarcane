@@ -13,7 +13,7 @@ import net.minecraft.world.item.Item;
 import java.util.function.Function;
 
 public class ModItems {
-    public static final Item Red_Sugercane = registerItem("red_sugercane",
+    public static final Item Red_Sugarcane = registerItem("red_sugercane",
             properties -> new Item(properties));
 
     private static Item registerItem(String name, Function<Item.Properties, Item> function) {
@@ -26,7 +26,7 @@ public class ModItems {
 
         CreativeModeTabEvents.modifyOutputEvent(CreativeModeTabs.INGREDIENTS)
                 .register(output -> {
-                    output.accept(Red_Sugercane);
+                    output.accept(Red_Sugarcane);
                 } );
     }
 }
