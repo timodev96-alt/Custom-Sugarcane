@@ -3,15 +3,15 @@
 	"id": "custom-sugarcane",
 	"version": "${version}",
 	"name": "Custom Sugarcane",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "This Mod adds custom sugarcane to Minecraft!",
 	"authors": [
-		"Me!"
+		"Timo"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/custom-sugarcane/icon.png",
 	"environment": "*",
 	"entrypoints": {
