@@ -260,6 +260,7 @@ class MainGame:
         pygame.display.set_caption("SUGAR RUSH")
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arialblack", 20)
+        self.font_big = pygame.font.SysFont("arialblack", 42)
 
         self.sfx_slice  = create_sound(700, 180, 0.14, "sine", 0.35)
         self.sfx_pop    = create_sound(300, 850, 0.08, "triangle", 0.25)
@@ -267,22 +268,26 @@ class MainGame:
         self.sfx_rush   = create_sound(260, 980, 0.45, "sine", 0.40)
         self.sfx_squish = create_sound(200, 80, 0.15, "noise", 0.35)
 
+        self.state = "MENU"
+        self.reset()
+
+    def reset(self):
         self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.canes = []
         self.beetles = []
         self.particles = []
         self.floating_texts = []
-
         self.sugar_kilos = 0
         self.canes_cut = 0
         self.combo = 0
+        self.max_combo = 0
         self.combo_timer = 0
         self.sugar_meter = 0
         self.rush_active = False
         self.rush_timer = 0
-
         self.shake_magnitude = 0
         self.ticks = 0
+        self.game_timer = 30 * FPS
 
         for _ in range(35):
             self.spawn_cane(random_stage=True)
@@ -341,6 +346,7 @@ class MainGame:
 
         if hit_anything:
             self.combo += 1
+            self.max_combo = max(self.max_combo, self.combo)
             self.combo_timer = 90
 
     def harvest_cane(self, cane):
@@ -394,42 +400,59 @@ class MainGame:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
                         running = False
-                    elif event.key == pygame.K_SPACE:
+                    elif self.state == "MENU" and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                        self.state = "PLAYING"
+                    elif self.state == "PLAYING" and event.key == pygame.K_SPACE:
                         self.handle_slash()
+                    elif self.state == "GAMEOVER" and event.key in (pygame.K_SPACE, pygame.K_r, pygame.K_RETURN):
+                        self.reset()
+                        self.state = "PLAYING"
 
-            if pygame.mouse.get_pressed()[0]:
-                mx, my = pygame.mouse.get_pos()
-                self.player.facing_angle = math.atan2(my - self.player.y, mx - self.player.x)
-                self.handle_slash()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if self.state == "MENU":
+                        self.state = "PLAYING"
+                    elif self.state == "GAMEOVER":
+                        self.reset()
+                        self.state = "PLAYING"
 
-            keys = pygame.key.get_pressed()
-            dx = (keys[pygame.K_RIGHT] or keys[pygame.K_d]) - (keys[pygame.K_LEFT] or keys[pygame.K_a])
-            dy = (keys[pygame.K_DOWN] or keys[pygame.K_s]) - (keys[pygame.K_UP] or keys[pygame.K_w])
-            self.player.move(dx, dy, self.rush_active)
-            self.player.update()
+            if self.state == "PLAYING":
+                self.game_timer -= 1
+                if self.game_timer <= 0:
+                    self.state = "GAMEOVER"
 
-            for cane in self.canes:
-                cane.update(self.ticks)
+                if pygame.mouse.get_pressed()[0]:
+                    mx, my = pygame.mouse.get_pos()
+                    self.player.facing_angle = math.atan2(my - self.player.y, mx - self.player.x)
+                    self.handle_slash()
 
-            if len(self.canes) < 32 and random.random() < 0.08:
-                self.spawn_cane()
+                keys = pygame.key.get_pressed()
+                dx = (keys[pygame.K_RIGHT] or keys[pygame.K_d]) - (keys[pygame.K_LEFT] or keys[pygame.K_a])
+                dy = (keys[pygame.K_DOWN] or keys[pygame.K_s]) - (keys[pygame.K_UP] or keys[pygame.K_w])
+                self.player.move(dx, dy, self.rush_active)
+                self.player.update()
 
-            if len(self.beetles) < 4 and random.random() < 0.015:
-                self.beetles.append(Beetle(random.choice([0, SCREEN_WIDTH]), random.randint(100, SCREEN_HEIGHT - 100)))
-            for b in self.beetles:
-                b.update()
+                for cane in self.canes:
+                    cane.update(self.ticks)
 
-            if self.combo_timer > 0:
-                self.combo_timer -= 1
-                if self.combo_timer <= 0:
-                    self.combo = 0
+                if len(self.canes) < 32 and random.random() < 0.08:
+                    self.spawn_cane()
 
-            if self.rush_active:
-                self.rush_timer -= 1
-                self.sugar_meter = (self.rush_timer / (7 * FPS)) * 100
-                if self.rush_timer <= 0:
-                    self.rush_active = False
-                    self.sugar_meter = 0
+                if len(self.beetles) < 4 and random.random() < 0.015:
+                    self.beetles.append(Beetle(random.choice([0, SCREEN_WIDTH]), random.randint(100, SCREEN_HEIGHT - 100)))
+                for b in self.beetles:
+                    b.update()
+
+                if self.combo_timer > 0:
+                    self.combo_timer -= 1
+                    if self.combo_timer <= 0:
+                        self.combo = 0
+
+                if self.rush_active:
+                    self.rush_timer -= 1
+                    self.sugar_meter = (self.rush_timer / (7 * FPS)) * 100
+                    if self.rush_timer <= 0:
+                        self.rush_active = False
+                        self.sugar_meter = 0
 
             for p in list(self.particles):
                 p.update()
@@ -483,18 +506,46 @@ class MainGame:
 
             pygame.draw.rect(self.screen, (25, 45, 20), (0, 0, SCREEN_WIDTH, 50))
             pygame.draw.line(self.screen, (60, 110, 50), (0, 50), (SCREEN_WIDTH, 50), 2)
-
+            
             combo_str = f" | {self.combo}x COMBO!" if self.combo > 1 else ""
+            sec_left = max(0, self.game_timer // FPS)
             hud_text = self.font.render(
-                f"Sugar: {self.sugar_kilos} kg  | Canes: {self.canes_cut}{combo_str}",
+                f"Sugar: {self.sugar_kilos} kg  | Canes: {self.canes_cut}{combo_str}  | {sec_left}s",
                 True, COLOR_GOLD if self.combo > 1 else COLOR_WHITE
             )
             self.screen.blit(hud_text, (20, 12))
+
             pygame.draw.rect(self.screen, (40, 40, 40), (740, 14, 180, 22), border_radius=6)
             fill_w = int((self.sugar_meter / 100) * 176)
             if fill_w > 0:
                 pygame.draw.rect(self.screen, COLOR_RUSH_PINK if self.rush_active else (255, 170, 40), (742, 16, fill_w, 18), border_radius=4)
             pygame.draw.rect(self.screen, COLOR_WHITE, (740, 14, 180, 22), 2, border_radius=6)
+
+            if self.state == "MENU":
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((10, 30, 15, 215))
+                self.screen.blit(overlay, (0, 0))
+
+                t1 = self.font_big.render("SUGAR RUSH: Custom Sugercane", True, COLOR_GOLD)
+                t2 = self.font.render("WASD to Move  |  SPACE / Click to Slash", True, COLOR_WHITE)
+                t3 = self.font.render("Press [SPACE] to Start Harvesting!", True, COLOR_RUSH_PINK)
+                self.screen.blit(t1, t1.get_rect(center=(SCREEN_WIDTH // 2, 220)))
+                self.screen.blit(t2, t2.get_rect(center=(SCREEN_WIDTH // 2, 300)))
+                self.screen.blit(t3, t3.get_rect(center=(SCREEN_WIDTH // 2, 390 + math.sin(self.ticks * 0.1) * 5)))
+
+            elif self.state == "GAMEOVER":
+                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay.fill((15, 25, 18, 225))
+                self.screen.blit(overlay, (0, 0))
+
+                t1 = self.font_big.render("HARVEST COMPLETE!", True, COLOR_GOLD)
+                t2 = self.font.render(f" Sugar Harvested: {self.sugar_kilos:,} kg", True, COLOR_WHITE)
+                t3 = self.font.render(f" Canes Sliced: {self.canes_cut}  | Max Combo: {self.max_combo}x", True, (200, 240, 180))
+                t4 = self.font.render("Press [SPACE] or [R] to Play Again", True, COLOR_RUSH_PINK)
+                self.screen.blit(t1, t1.get_rect(center=(SCREEN_WIDTH // 2, 200)))
+                self.screen.blit(t2, t2.get_rect(center=(SCREEN_WIDTH // 2, 275)))
+                self.screen.blit(t3, t3.get_rect(center=(SCREEN_WIDTH // 2, 325)))
+                self.screen.blit(t4, t4.get_rect(center=(SCREEN_WIDTH // 2, 420 + math.sin(self.ticks * 0.1) * 4)))
 
             pygame.display.flip()
 
