@@ -15,4 +15,4 @@ python app.py
 ```
 
 
-## Or just download the `.exe`
+## Or just download the [`.exe`](https://github.com/timodev96-alt/Custom-Sugarcane/releases/tag/Main)
