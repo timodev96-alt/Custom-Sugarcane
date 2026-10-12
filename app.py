@@ -18,6 +18,7 @@ COLOR_GOLD_STEM   = (255, 215, 0)
 COLOR_GOLD_LEAF   = (255, 238, 88)
 COLOR_WHITE       = (255, 255, 255)
 COLOR_GOLD        = (255, 205, 40)
+COLOR_RUSH_PINK   = (255, 75, 140)
 
 def create_sound(freq_start, freq_end, duration, wave_type="sine", vol=0.25):
     sample_rate = 22050
@@ -161,6 +162,27 @@ class SugarCane:
                 sy = tip_y + random.randint(-16, 20)
                 pygame.draw.circle(surf, COLOR_WHITE, (int(sx), int(sy)), random.randint(1, 3))
 
+class Beetle:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+        self.vx = random.uniform(-1.2, 1.2)
+        self.vy = random.uniform(-1.2, 1.2)
+        self.radius = 12
+        self.timer = random.randint(40, 120)
+
+    def update(self):
+        self.timer -= 1
+        if self.timer <= 0:
+            self.vx, self.vy = random.uniform(-1.6, 1.6), random.uniform(-1.6, 1.6)
+            self.timer = random.randint(60, 140)
+        self.x = max(50, min(SCREEN_WIDTH - 50, self.x + self.vx))
+        self.y = max(80, min(SCREEN_HEIGHT - 50, self.y + self.vy))
+
+    def draw(self, surf):
+        pygame.draw.circle(surf, (120, 28, 64), (int(self.x), int(self.y)), self.radius)
+        ang = math.atan2(self.vy, self.vx)
+        pygame.draw.circle(surf, (40, 10, 20), (int(self.x + math.cos(ang) * 10), int(self.y + math.sin(ang) * 10)), 6)
+
 class Player:
     def __init__(self, x, y):
         self.x = x
@@ -173,11 +195,12 @@ class Player:
         self.slash_range = 64
         self.slash_arc_deg = 110
 
-    def move(self, dx, dy):
+    def move(self, dx, dy, rush_active=False):
+        curr_speed = self.speed * (1.5 if rush_active else 1.0)
         dist = math.hypot(dx, dy)
         if dist > 0:
-            self.x += (dx / dist) * self.speed
-            self.y += (dy / dist) * self.speed
+            self.x += (dx / dist) * curr_speed
+            self.y += (dy / dist) * curr_speed
             self.facing_angle = math.atan2(dy, dx)
 
         self.x = max(40, min(SCREEN_WIDTH - 40, self.x))
@@ -238,17 +261,26 @@ class MainGame:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("arialblack", 20)
 
-        self.sfx_slice = create_sound(700, 180, 0.14, "sine", 0.35)
-        self.sfx_pop   = create_sound(300, 850, 0.08, "triangle", 0.25)
-        self.sfx_gold  = create_sound(400, 1200, 0.28, "square", 0.20)
+        self.sfx_slice  = create_sound(700, 180, 0.14, "sine", 0.35)
+        self.sfx_pop    = create_sound(300, 850, 0.08, "triangle", 0.25)
+        self.sfx_gold   = create_sound(400, 1200, 0.28, "square", 0.20)
+        self.sfx_rush   = create_sound(260, 980, 0.45, "sine", 0.40)
+        self.sfx_squish = create_sound(200, 80, 0.15, "noise", 0.35)
 
         self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
         self.canes = []
+        self.beetles = []
         self.particles = []
         self.floating_texts = []
 
         self.sugar_kilos = 0
         self.canes_cut = 0
+        self.combo = 0
+        self.combo_timer = 0
+        self.sugar_meter = 0
+        self.rush_active = False
+        self.rush_timer = 0
+
         self.shake_magnitude = 0
         self.ticks = 0
 
@@ -284,6 +316,7 @@ class MainGame:
             return
 
         self.play_sound(self.sfx_slice)
+        hit_anything = False
 
         for cane in list(self.canes):
             if cane.stage in [2, 3]:
@@ -294,6 +327,21 @@ class MainGame:
 
                     if abs(diff) < math.radians(self.player.slash_arc_deg / 2 + 25):
                         self.harvest_cane(cane)
+                        hit_anything = True
+
+        for b in list(self.beetles):
+            if math.hypot(self.player.x - b.x, self.player.y - b.y) < self.player.slash_range + b.radius:
+                self.beetles.remove(b)
+                self.play_sound(self.sfx_squish)
+                self.trigger_screenshake(6)
+                for _ in range(14):
+                    self.particles.append(Particle(b.x, b.y, random.uniform(-4, 4), random.uniform(-4, 4), (160, 30, 80), random.randint(3, 5), life=25))
+                self.floating_texts.append(FloatingText(b.x, b.y, "PEST BUST!", COLOR_GOLD_LEAF, 20))
+                hit_anything = True
+
+        if hit_anything:
+            self.combo += 1
+            self.combo_timer = 90
 
     def harvest_cane(self, cane):
         is_gold = (cane.stage == 3)
@@ -310,8 +358,18 @@ class MainGame:
             self.particles.append(Particle(cane.x, cane.y - 30, random.uniform(-3, 3), random.uniform(-4, 1),
                                            COLOR_WHITE, random.randint(2, 4), life=22, shape="spark"))
 
-        gained_kg = 5 if not is_gold else 18
+        mult = 3 if self.rush_active else 1
+        gained_kg = (5 if not is_gold else 18) * mult
         self.sugar_kilos += gained_kg
+
+        if not self.rush_active:
+            self.sugar_meter += 8 if not is_gold else 20
+            if self.sugar_meter >= 100:
+                self.rush_active = True
+                self.rush_timer = 7 * FPS
+                self.play_sound(self.sfx_rush)
+                self.trigger_screenshake(12)
+                self.floating_texts.append(FloatingText(self.player.x, self.player.y - 50, "★ SUGAR RUSH! ★", COLOR_RUSH_PINK, 28))
 
         self.trigger_screenshake(5 if not is_gold else 9)
 
@@ -347,13 +405,31 @@ class MainGame:
             keys = pygame.key.get_pressed()
             dx = (keys[pygame.K_RIGHT] or keys[pygame.K_d]) - (keys[pygame.K_LEFT] or keys[pygame.K_a])
             dy = (keys[pygame.K_DOWN] or keys[pygame.K_s]) - (keys[pygame.K_UP] or keys[pygame.K_w])
-            self.player.move(dx, dy)
+            self.player.move(dx, dy, self.rush_active)
             self.player.update()
+
             for cane in self.canes:
                 cane.update(self.ticks)
 
             if len(self.canes) < 32 and random.random() < 0.08:
                 self.spawn_cane()
+
+            if len(self.beetles) < 4 and random.random() < 0.015:
+                self.beetles.append(Beetle(random.choice([0, SCREEN_WIDTH]), random.randint(100, SCREEN_HEIGHT - 100)))
+            for b in self.beetles:
+                b.update()
+
+            if self.combo_timer > 0:
+                self.combo_timer -= 1
+                if self.combo_timer <= 0:
+                    self.combo = 0
+
+            if self.rush_active:
+                self.rush_timer -= 1
+                self.sugar_meter = (self.rush_timer / (7 * FPS)) * 100
+                if self.rush_timer <= 0:
+                    self.rush_active = False
+                    self.sugar_meter = 0
 
             for p in list(self.particles):
                 p.update()
@@ -383,8 +459,17 @@ class MainGame:
                     if (tx // 64 + ty // 64) % 2 == 0:
                         pygame.draw.rect(view_surf, COLOR_GRASS_DARK, (tx, ty, 64, 64))
 
+            if self.rush_active:
+                pulse = abs(math.sin(self.ticks * 0.15)) * 45
+                rush_ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                rush_ov.fill((255, 60, 140, int(25 + pulse)))
+                view_surf.blit(rush_ov, (0, 0))
+
             for cane in sorted(self.canes, key=lambda c: c.y):
                 cane.draw(view_surf, self.ticks)
+
+            for b in self.beetles:
+                b.draw(view_surf)
 
             self.player.draw(view_surf, self.ticks)
 
@@ -398,11 +483,18 @@ class MainGame:
 
             pygame.draw.rect(self.screen, (25, 45, 20), (0, 0, SCREEN_WIDTH, 50))
             pygame.draw.line(self.screen, (60, 110, 50), (0, 50), (SCREEN_WIDTH, 50), 2)
+
+            combo_str = f" | {self.combo}x COMBO!" if self.combo > 1 else ""
             hud_text = self.font.render(
-                f"Sugar Harvested: {self.sugar_kilos} kg  | Canes Sliced: {self.canes_cut}",
-                True, COLOR_WHITE
+                f"Sugar: {self.sugar_kilos} kg  | Canes: {self.canes_cut}{combo_str}",
+                True, COLOR_GOLD if self.combo > 1 else COLOR_WHITE
             )
             self.screen.blit(hud_text, (20, 12))
+            pygame.draw.rect(self.screen, (40, 40, 40), (740, 14, 180, 22), border_radius=6)
+            fill_w = int((self.sugar_meter / 100) * 176)
+            if fill_w > 0:
+                pygame.draw.rect(self.screen, COLOR_RUSH_PINK if self.rush_active else (255, 170, 40), (742, 16, fill_w, 18), border_radius=4)
+            pygame.draw.rect(self.screen, COLOR_WHITE, (740, 14, 180, 22), 2, border_radius=6)
 
             pygame.display.flip()
 
